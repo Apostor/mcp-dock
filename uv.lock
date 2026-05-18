@@ -885,7 +885,7 @@ requires-dist = [
 [[package]]
 name = "mcp-dock-google-drive"
 version = "0.1.0"
-source = { editable = "servers/google_drive" }
+source = { editable = "servers/google-drive" }
 dependencies = [
     { name = "google-api-python-client" },
     { name = "mcp-dock-core" },

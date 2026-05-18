@@ -139,7 +139,7 @@ async def test_list_files_calls_drive_api(tmp_path):
 async def test_list_files_defaults_to_default_instance(tmp_path):
     _write_valid_token(tmp_path, instance="default")
     _write_credentials(tmp_path, instance="default")
-    _inject_request()  # no instance query param
+    _inject_request()
 
     mock_svc = MagicMock()
     mock_svc.files().list().execute.return_value = {"files": []}
@@ -207,7 +207,6 @@ async def test_expired_token_is_refreshed_before_api_call(tmp_path):
 
     mock_svc = MagicMock()
     mock_svc.files().list().execute.return_value = {"files": []}
-
     refreshed_expiry = time.time() + 3600
 
     with patch("servers.google_drive.server._drive_service", return_value=mock_svc), \
@@ -355,7 +354,6 @@ async def test_auth_callback_saves_token(tmp_path):
 
 @pytest.mark.anyio
 async def test_missing_credentials_file_raises_error(tmp_path):
-    # No credentials file — instance not set up on this server
     _inject_request(query_string="instance=unconfigured")
 
     from fastmcp.exceptions import ToolError
