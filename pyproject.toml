@@ -5,6 +5,9 @@ description = "Self-hosted MCP servers on localhost — privacy-first, zero thir
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+dependencies = [
+    "mcp-dock-core",
+]
 
 [project.scripts]
 mcp-dock = "core.cli:main"
@@ -18,6 +21,9 @@ packages = ["core"]
 
 [tool.uv.workspace]
 members = ["core", "servers/*"]
+
+[tool.uv.sources]
+mcp-dock-core = { workspace = true }
 
 [dependency-groups]
 dev = [
