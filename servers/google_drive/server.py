@@ -1,12 +1,26 @@
+from urllib.parse import quote
+
 from fastmcp.server.dependencies import CurrentHeaders
+from google_auth_oauthlib.flow import Flow
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, INVALID_PARAMS
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from core.factory import create_server
 from core.oauth import OAuthBase
 from core.settings import get_settings
 
 google_drive = create_server("google-drive")
+
+_SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/spreadsheets",
+]
+
+# Holds in-progress OAuth flows: {state: (flow, instance)}
+_pending_flows: dict[str, tuple] = {}
 
 oauth = OAuthBase(
     server="google-drive",
@@ -17,6 +31,7 @@ oauth.register_reauth_tool(google_drive)
 
 
 def _get_token(headers: dict[str, str]) -> str:
+    from fastmcp.server.dependencies import get_http_request
     h = {k.lower(): v for k, v in headers.items()}
     creds_path = h.get("x-google-credentials-path")
     if not creds_path:
@@ -29,7 +44,71 @@ def _get_token(headers: dict[str, str]) -> str:
         instance=instance,
         tokens_path=get_settings().tokens_path,
     )
-    return client_oauth.get_token(creds_path)
+    try:
+        return client_oauth.get_token(creds_path)
+    except RuntimeError:
+        try:
+            req = get_http_request()
+            host = req.headers.get("host", "localhost")
+            scheme = req.url.scheme
+        except RuntimeError:
+            host, scheme = "localhost", "http"
+        auth_url = (
+            f"{scheme}://{host}/google-drive/auth/start"
+            f"?credentials_path={quote(creds_path)}&instance={quote(instance)}"
+        )
+        raise McpError(
+            ErrorData(
+                code=INVALID_PARAMS,
+                message=f"Not authenticated. Open this URL to authenticate: {auth_url}",
+            )
+        )
+
+
+@google_drive.custom_route("/auth/start", methods=["GET"])
+async def auth_start(request: Request) -> RedirectResponse:
+    credentials_path = request.query_params.get("credentials_path")
+    instance = request.query_params.get("instance", "default")
+    if not credentials_path:
+        return JSONResponse({"error": "credentials_path is required"}, status_code=400)
+
+    host = request.headers.get("host", "localhost")
+    scheme = request.url.scheme
+    redirect_uri = f"{scheme}://{host}/google-drive/auth/callback"
+
+    flow = Flow.from_client_secrets_file(credentials_path, scopes=_SCOPES, redirect_uri=redirect_uri)
+    auth_url, state = flow.authorization_url(access_type="offline", include_granted_scopes="true")
+    _pending_flows[state] = (flow, instance)
+
+    return RedirectResponse(auth_url)
+
+
+@google_drive.custom_route("/auth/callback", methods=["GET"])
+async def auth_callback(request: Request) -> HTMLResponse:
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
+
+    if not state or state not in _pending_flows:
+        return JSONResponse({"error": "Invalid or expired state"}, status_code=400)
+
+    flow, instance = _pending_flows.pop(state)
+
+    host = request.headers.get("host", "localhost")
+    scheme = request.url.scheme
+    flow.redirect_uri = f"{scheme}://{host}/google-drive/auth/callback"
+    flow.fetch_token(code=code)
+
+    client_oauth = OAuthBase(
+        server="google-drive",
+        instance=instance,
+        tokens_path=get_settings().tokens_path,
+    )
+    client_oauth._save_token(flow.credentials)
+
+    return HTMLResponse(
+        "<html><body><h1>✓ Authenticated</h1>"
+        "<p>Google Drive is connected. You can close this tab.</p></body></html>"
+    )
 
 
 def _drive_service(token: str):

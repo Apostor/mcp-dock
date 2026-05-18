@@ -26,7 +26,7 @@ class OAuthBase:
             "token_uri": creds.token_uri,
             "client_id": creds.client_id,
             "client_secret": creds.client_secret,
-            "expiry": creds.expiry.timestamp(),
+            "expiry": creds.expiry.timestamp() if creds.expiry else time.time() + 3600,
         }
         token_file = self._token_file()
         token_file.write_text(json.dumps(data))

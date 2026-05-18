@@ -189,6 +189,99 @@ async def test_expired_token_is_refreshed_before_api_call(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# First-auth: no token file → McpError with auth URL
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_no_token_raises_error_with_auth_url(tmp_path):
+    # No token file written — first use
+    _inject_headers({
+        "host": "my-server.example.com",
+        "x-google-credentials-path": "/secrets/client_secret.json",
+        "x-mcp-instance": "default",
+    })
+
+    from fastmcp.exceptions import ToolError
+    with patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        with pytest.raises(ToolError) as exc_info:
+            await google_drive.call_tool("list_files", {})
+
+    error_message = str(exc_info.value)
+    assert "http://my-server.example.com/google-drive/auth/start" in error_message
+    assert "credentials_path=" in error_message
+    assert "instance=default" in error_message
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_auth_start_redirects_to_google(tmp_path):
+    from unittest.mock import patch as _patch
+    from servers.google_drive.server import google_drive
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+
+    app = Starlette(routes=[Mount("/google-drive", app=google_drive.http_app())])
+
+    mock_flow = MagicMock()
+    mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "state-123")
+
+    with patch("servers.google_drive.server.Flow") as MockFlow:
+        MockFlow.from_client_secrets_file.return_value = mock_flow
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/google-drive/auth/start",
+                params={"credentials_path": "/secrets/client_secret.json", "instance": "default"},
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 307
+    assert "accounts.google.com" in response.headers["location"]
+
+
+@pytest.mark.anyio
+async def test_auth_callback_saves_token(tmp_path):
+    from servers.google_drive.server import google_drive, _pending_flows
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    import time as _time
+
+    app = Starlette(routes=[Mount("/google-drive", app=google_drive.http_app())])
+
+    mock_flow = MagicMock()
+    mock_flow.credentials.token = "brand-new-token"
+    mock_flow.credentials.refresh_token = "refresh-abc"
+    mock_flow.credentials.token_uri = "https://oauth2.googleapis.com/token"
+    mock_flow.credentials.client_id = "client-id"
+    mock_flow.credentials.client_secret = "client-secret"
+    mock_flow.credentials.expiry.timestamp.return_value = _time.time() + 3600
+
+    state_key = "test-state-xyz"
+    _pending_flows[state_key] = (mock_flow, "default")
+
+    with patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/google-drive/auth/callback",
+                params={"code": "auth-code-from-google", "state": state_key},
+            )
+
+    assert response.status_code == 200
+    assert "Authenticated" in response.text
+    saved = json.loads((tmp_path / "google-drive-default.json").read_text())
+    assert saved["token"] == "brand-new-token"
+
+
+# ---------------------------------------------------------------------------
 # Credential header enforcement
 # ---------------------------------------------------------------------------
 
