@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     enabled_servers: str = ""
     tokens_path: str = "/opt/app/tokens"
+    credentials_path: str = "/opt/app/credentials"
 
     def get_enabled_servers(self) -> list[str]:
         return [s.strip() for s in self.enabled_servers.split(",") if s.strip()]

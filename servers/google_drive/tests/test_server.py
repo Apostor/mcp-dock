@@ -19,6 +19,12 @@ def _token_file(tokens_dir: Path, instance: str = "default") -> Path:
     return tokens_dir / f"google-drive-{instance}.json"
 
 
+def _write_credentials(base: Path, instance: str = "default") -> None:
+    creds_dir = base / "google-drive"
+    creds_dir.mkdir(parents=True, exist_ok=True)
+    (creds_dir / f"{instance}.json").write_text("{}")
+
+
 def _write_valid_token(tokens_dir: Path, instance: str = "default") -> None:
     tokens_dir.mkdir(parents=True, exist_ok=True)
     data = {
@@ -34,8 +40,8 @@ def _write_valid_token(tokens_dir: Path, instance: str = "default") -> None:
     f.chmod(0o600)
 
 
-def _inject_headers(headers: dict[str, str]) -> None:
-    """Set request headers in the FastMCP context variable for unit tests."""
+def _inject_request(headers: dict[str, str] | None = None, query_string: str = "") -> None:
+    """Inject an HTTP request into the FastMCP context variable for unit tests."""
     scope = {
         "type": "http",
         "http_version": "1.1",
@@ -43,8 +49,8 @@ def _inject_headers(headers: dict[str, str]) -> None:
         "scheme": "http",
         "path": "/mcp/",
         "raw_path": b"/mcp/",
-        "query_string": b"",
-        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        "query_string": query_string.encode(),
+        "headers": [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
         "client": None,
         "server": None,
         "root_path": "",
@@ -91,12 +97,29 @@ async def test_all_tools_are_registered():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
+async def test_list_files_resolves_instance_from_query_param(tmp_path):
+    _write_valid_token(tmp_path, instance="personal")
+    _write_credentials(tmp_path, instance="personal")
+    _inject_request(query_string="instance=personal")
+
+    mock_svc = MagicMock()
+    mock_svc.files().list().execute.return_value = {"files": [{"id": "1", "name": "f.txt"}]}
+
+    with patch("servers.google_drive.server._drive_service", return_value=mock_svc), \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        result = await google_drive.call_tool("list_files", {})
+
+    assert any("f.txt" in str(item) for item in result)
+
+
+@pytest.mark.anyio
 async def test_list_files_calls_drive_api(tmp_path):
     _write_valid_token(tmp_path)
-    _inject_headers({
-        "x-google-credentials-path": "/fake/client_secret.json",
-        "x-mcp-instance": "default",
-    })
+    _write_credentials(tmp_path)
+    _inject_request(query_string="instance=default")
 
     mock_files = [{"id": "1", "name": "doc.txt", "mimeType": "text/plain"}]
     mock_svc = MagicMock()
@@ -105,6 +128,7 @@ async def test_list_files_calls_drive_api(tmp_path):
     with patch("servers.google_drive.server._drive_service", return_value=mock_svc), \
          patch("servers.google_drive.server.get_settings") as mock_settings:
         mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
         from servers.google_drive.server import google_drive
         result = await google_drive.call_tool("list_files", {})
 
@@ -112,9 +136,30 @@ async def test_list_files_calls_drive_api(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_list_files_defaults_to_default_instance(tmp_path):
+    _write_valid_token(tmp_path, instance="default")
+    _write_credentials(tmp_path, instance="default")
+    _inject_request()  # no instance query param
+
+    mock_svc = MagicMock()
+    mock_svc.files().list().execute.return_value = {"files": []}
+
+    with patch("servers.google_drive.server._drive_service", return_value=mock_svc), \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        result = await google_drive.call_tool("list_files", {})
+
+    assert result.structured_content["result"] == []
+
+
+@pytest.mark.anyio
 async def test_two_instances_use_separate_token_files(tmp_path):
     _write_valid_token(tmp_path, instance="work")
     _write_valid_token(tmp_path, instance="personal")
+    _write_credentials(tmp_path, instance="work")
+    _write_credentials(tmp_path, instance="personal")
 
     tokens_seen = []
     mock_svc = MagicMock()
@@ -127,12 +172,13 @@ async def test_two_instances_use_separate_token_files(tmp_path):
     with patch("servers.google_drive.server._drive_service", side_effect=capture_service), \
          patch("servers.google_drive.server.get_settings") as mock_settings:
         mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
         from servers.google_drive.server import google_drive
 
-        _inject_headers({"x-google-credentials-path": "/fake/creds.json", "x-mcp-instance": "work"})
+        _inject_request(query_string="instance=work")
         await google_drive.call_tool("list_files", {})
 
-        _inject_headers({"x-google-credentials-path": "/fake/creds.json", "x-mcp-instance": "personal"})
+        _inject_request(query_string="instance=personal")
         await google_drive.call_tool("list_files", {})
 
     assert len(tokens_seen) == 2
@@ -156,11 +202,8 @@ async def test_expired_token_is_refreshed_before_api_call(tmp_path):
     token_file = _token_file(tokens_dir)
     token_file.write_text(json.dumps(expired_data))
     token_file.chmod(0o600)
-
-    _inject_headers({
-        "x-google-credentials-path": "/fake/client_secret.json",
-        "x-mcp-instance": "default",
-    })
+    _write_credentials(tmp_path)
+    _inject_request()
 
     mock_svc = MagicMock()
     mock_svc.files().list().execute.return_value = {"files": []}
@@ -171,6 +214,7 @@ async def test_expired_token_is_refreshed_before_api_call(tmp_path):
          patch("servers.google_drive.server.get_settings") as mock_settings, \
          patch("core.oauth.Credentials") as MockCreds:
         mock_settings.return_value.tokens_path = str(tokens_dir)
+        mock_settings.return_value.credentials_path = str(tmp_path)
         mock_creds = MagicMock()
         mock_creds.token = "refreshed-token"
         mock_creds.expiry.timestamp.return_value = refreshed_expiry
@@ -194,23 +238,19 @@ async def test_expired_token_is_refreshed_before_api_call(tmp_path):
 
 @pytest.mark.anyio
 async def test_no_token_raises_error_with_auth_url(tmp_path):
-    # No token file written — first use
-    _inject_headers({
-        "host": "my-server.example.com",
-        "x-google-credentials-path": "/secrets/client_secret.json",
-        "x-mcp-instance": "default",
-    })
+    _write_credentials(tmp_path)
+    _inject_request(headers={"host": "my-server.example.com"})
 
     from fastmcp.exceptions import ToolError
     with patch("servers.google_drive.server.get_settings") as mock_settings:
         mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
         from servers.google_drive.server import google_drive
         with pytest.raises(ToolError) as exc_info:
             await google_drive.call_tool("list_files", {})
 
     error_message = str(exc_info.value)
     assert "http://my-server.example.com/google-drive/auth/start" in error_message
-    assert "credentials_path=" in error_message
     assert "instance=default" in error_message
 
 
@@ -220,29 +260,56 @@ async def test_no_token_raises_error_with_auth_url(tmp_path):
 
 @pytest.mark.anyio
 async def test_auth_start_redirects_to_google(tmp_path):
-    from unittest.mock import patch as _patch
     from servers.google_drive.server import google_drive
     from starlette.applications import Starlette
     from starlette.routing import Mount
 
+    _write_credentials(tmp_path)
     app = Starlette(routes=[Mount("/google-drive", app=google_drive.http_app())])
 
     mock_flow = MagicMock()
     mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?...", "state-123")
 
-    with patch("servers.google_drive.server.Flow") as MockFlow:
+    with patch("servers.google_drive.server.Flow") as MockFlow, \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        mock_settings.return_value.tokens_path = str(tmp_path)
         MockFlow.from_client_secrets_file.return_value = mock_flow
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
                 "/google-drive/auth/start",
-                params={"credentials_path": "/secrets/client_secret.json", "instance": "default"},
+                params={"instance": "default"},
                 follow_redirects=False,
             )
 
     assert response.status_code == 307
     assert "accounts.google.com" in response.headers["location"]
+
+
+@pytest.mark.anyio
+async def test_auth_start_returns_400_when_no_credentials_file(tmp_path):
+    from servers.google_drive.server import google_drive
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+
+    app = Starlette(routes=[Mount("/google-drive", app=google_drive.http_app())])
+
+    with patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/google-drive/auth/start",
+                params={"instance": "nonexistent"},
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 400
+    assert "nonexistent" in response.text
 
 
 @pytest.mark.anyio
@@ -267,6 +334,7 @@ async def test_auth_callback_saves_token(tmp_path):
 
     with patch("servers.google_drive.server.get_settings") as mock_settings:
         mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
@@ -282,26 +350,20 @@ async def test_auth_callback_saves_token(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Credential header enforcement
+# No credentials file in store → error before attempting OAuth
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_missing_credentials_header_raises_mcp_error():
-    from servers.google_drive.server import google_drive
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
+async def test_missing_credentials_file_raises_error(tmp_path):
+    # No credentials file — instance not set up on this server
+    _inject_request(query_string="instance=unconfigured")
 
-    app = Starlette(routes=[Mount("/google-drive", app=google_drive.http_app())])
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        response = await client.post(
-            "/google-drive/mcp/",
-            json={
-                "jsonrpc": "2.0", "id": 1,
-                "method": "tools/call",
-                "params": {"name": "list_files", "arguments": {}},
-            },
-            headers={"content-type": "application/json", "accept": "application/json"},
-        )
-    assert response.status_code != 500
+    from fastmcp.exceptions import ToolError
+    with patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        with pytest.raises(ToolError) as exc_info:
+            await google_drive.call_tool("list_files", {})
+
+    assert "unconfigured" in str(exc_info.value)

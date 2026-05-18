@@ -45,7 +45,7 @@ class OAuthBase:
         if token_file.exists():
             token_file.unlink()
 
-    def get_token(self, credentials_path: str) -> str:
+    def get_token(self) -> str:
         token_file = self._token_file()
         if token_file.exists():
             data = json.loads(token_file.read_text())

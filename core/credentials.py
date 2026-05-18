@@ -1,12 +1,23 @@
+from pathlib import Path
+
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, INVALID_PARAMS
 
 
-def require_headers(headers: dict[str, str], *keys: str) -> dict[str, str]:
-    headers_lower = {k.lower(): v for k, v in headers.items()}
-    missing = [k for k in keys if k.lower() not in headers_lower]
-    if missing:
-        raise McpError(
-            ErrorData(code=INVALID_PARAMS, message=f"Missing required headers: {', '.join(missing)}")
-        )
-    return {k: headers_lower[k.lower()] for k in keys}
+class CredentialsStore:
+    def __init__(self, credentials_path: str) -> None:
+        self._base = Path(credentials_path)
+
+    def resolve(self, server: str, instance: str) -> str:
+        path = self._base / server / f"{instance}.json"
+        if not path.exists():
+            raise McpError(
+                ErrorData(
+                    code=INVALID_PARAMS,
+                    message=(
+                        f"No credentials file for instance '{instance}'. "
+                        f"Place your OAuth client secret at: {path}"
+                    ),
+                )
+            )
+        return str(path)

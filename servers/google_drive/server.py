@@ -1,12 +1,12 @@
 from urllib.parse import quote
 
-from fastmcp.server.dependencies import CurrentHeaders
 from google_auth_oauthlib.flow import Flow
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, INVALID_PARAMS
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from core.credentials import CredentialsStore
 from core.factory import create_server
 from core.oauth import OAuthBase
 from core.settings import get_settings
@@ -30,32 +30,31 @@ oauth = OAuthBase(
 oauth.register_reauth_tool(google_drive)
 
 
-def _get_token(headers: dict[str, str]) -> str:
+def _get_token() -> str:
     from fastmcp.server.dependencies import get_http_request
-    h = {k.lower(): v for k, v in headers.items()}
-    creds_path = h.get("x-google-credentials-path")
-    if not creds_path:
-        raise McpError(
-            ErrorData(code=INVALID_PARAMS, message="Missing required header: x-google-credentials-path")
-        )
-    instance = h.get("x-mcp-instance", "default")
+    try:
+        req = get_http_request()
+        instance = req.query_params.get("instance", "default")
+        host = req.headers.get("host", "localhost")
+        scheme = req.url.scheme
+    except RuntimeError:
+        instance = "default"
+        host, scheme = "localhost", "http"
+
+    store = CredentialsStore(get_settings().credentials_path)
+    store.resolve("google-drive", instance)  # validates credentials file exists
+
     client_oauth = OAuthBase(
         server="google-drive",
         instance=instance,
         tokens_path=get_settings().tokens_path,
     )
     try:
-        return client_oauth.get_token(creds_path)
+        return client_oauth.get_token()
     except RuntimeError:
-        try:
-            req = get_http_request()
-            host = req.headers.get("host", "localhost")
-            scheme = req.url.scheme
-        except RuntimeError:
-            host, scheme = "localhost", "http"
         auth_url = (
             f"{scheme}://{host}/google-drive/auth/start"
-            f"?credentials_path={quote(creds_path)}&instance={quote(instance)}"
+            f"?instance={quote(instance)}"
         )
         raise McpError(
             ErrorData(
@@ -67,10 +66,16 @@ def _get_token(headers: dict[str, str]) -> str:
 
 @google_drive.custom_route("/auth/start", methods=["GET"])
 async def auth_start(request: Request) -> RedirectResponse:
-    credentials_path = request.query_params.get("credentials_path")
     instance = request.query_params.get("instance", "default")
-    if not credentials_path:
-        return JSONResponse({"error": "credentials_path is required"}, status_code=400)
+
+    store = CredentialsStore(get_settings().credentials_path)
+    try:
+        credentials_path = store.resolve("google-drive", instance)
+    except McpError:
+        return JSONResponse(
+            {"error": f"No credentials file for instance '{instance}'"},
+            status_code=400,
+        )
 
     host = request.headers.get("host", "localhost")
     scheme = request.url.scheme
@@ -136,10 +141,9 @@ def _sheets_service(token: str):
 async def list_files(
     page_size: int = 20,
     folder_id: str = "root",
-    headers: dict = CurrentHeaders(),
 ) -> list[dict]:
     """List files in a Google Drive folder."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     result = svc.files().list(
         q=f"'{folder_id}' in parents and trashed=false",
@@ -153,10 +157,9 @@ async def list_files(
 async def search_files(
     query: str,
     page_size: int = 20,
-    headers: dict = CurrentHeaders(),
 ) -> list[dict]:
     """Search for files in Google Drive."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     result = svc.files().list(
         q=f"fullText contains '{query}' and trashed=false",
@@ -169,10 +172,9 @@ async def search_files(
 @google_drive.tool()
 async def get_file_metadata(
     file_id: str,
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Get metadata for a file."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     return svc.files().get(
         fileId=file_id,
@@ -183,12 +185,11 @@ async def get_file_metadata(
 @google_drive.tool()
 async def download_file(
     file_id: str,
-    headers: dict = CurrentHeaders(),
 ) -> str:
     """Download file content as a string (text files only)."""
     import io
     from googleapiclient.http import MediaIoBaseDownload
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     request = svc.files().get_media(fileId=file_id)
     buf = io.BytesIO()
@@ -205,12 +206,11 @@ async def upload_file(
     content: str,
     mime_type: str = "text/plain",
     folder_id: str = "root",
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Upload a text file to Google Drive."""
     import io
     from googleapiclient.http import MediaIoBaseUpload
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     metadata = {"name": name, "parents": [folder_id]}
     media = MediaIoBaseUpload(io.BytesIO(content.encode()), mimetype=mime_type)
@@ -221,10 +221,9 @@ async def upload_file(
 async def create_folder(
     name: str,
     parent_id: str = "root",
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Create a folder in Google Drive."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     metadata = {
         "name": name,
@@ -238,10 +237,9 @@ async def create_folder(
 async def create_doc(
     title: str,
     folder_id: str = "root",
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Create a new Google Doc."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     metadata = {
         "name": title,
@@ -255,10 +253,9 @@ async def create_doc(
 async def create_sheet(
     title: str,
     folder_id: str = "root",
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Create a new Google Sheet."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     metadata = {
         "name": title,
@@ -271,10 +268,9 @@ async def create_sheet(
 @google_drive.tool()
 async def read_doc(
     document_id: str,
-    headers: dict = CurrentHeaders(),
 ) -> str:
     """Read the plain-text content of a Google Doc."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _docs_service(token)
     doc = svc.documents().get(documentId=document_id).execute()
     body = doc.get("body", {})
@@ -290,10 +286,9 @@ async def read_doc(
 async def update_doc(
     document_id: str,
     content: str,
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Replace all content in a Google Doc with the given text."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _docs_service(token)
     doc = svc.documents().get(documentId=document_id).execute()
     end_index = doc["body"]["content"][-1]["endIndex"] - 1
@@ -310,10 +305,9 @@ async def update_doc(
 async def read_sheet(
     spreadsheet_id: str,
     range_notation: str = "Sheet1",
-    headers: dict = CurrentHeaders(),
 ) -> list[list]:
     """Read values from a Google Sheet range."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _sheets_service(token)
     result = (
         svc.spreadsheets()
@@ -329,10 +323,9 @@ async def update_sheet(
     spreadsheet_id: str,
     range_notation: str,
     values: list[list],
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Write values to a Google Sheet range."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _sheets_service(token)
     return (
         svc.spreadsheets()
@@ -352,10 +345,9 @@ async def share_file(
     file_id: str,
     email: str,
     role: str = "reader",
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Share a file with a user by email."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     permission = {"type": "user", "role": role, "emailAddress": email}
     return svc.permissions().create(fileId=file_id, body=permission, fields="id").execute()
@@ -366,10 +358,9 @@ async def update_permissions(
     file_id: str,
     permission_id: str,
     role: str,
-    headers: dict = CurrentHeaders(),
 ) -> dict:
     """Update an existing permission on a file."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     return svc.permissions().update(
         fileId=file_id, permissionId=permission_id, body={"role": role}, fields="id,role"
@@ -379,10 +370,9 @@ async def update_permissions(
 @google_drive.tool()
 async def list_permissions(
     file_id: str,
-    headers: dict = CurrentHeaders(),
 ) -> list[dict]:
     """List all permissions on a file."""
-    token = _get_token(headers)
+    token = _get_token()
     svc = _drive_service(token)
     result = svc.permissions().list(
         fileId=file_id, fields="permissions(id,type,role,emailAddress)"

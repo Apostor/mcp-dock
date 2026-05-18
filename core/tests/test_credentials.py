@@ -1,22 +1,21 @@
 import pytest
 
-from core.credentials import require_headers
+from core.credentials import CredentialsStore
 
 
-def test_returns_values_for_present_headers():
-    headers = {"x-trello-key": "key123", "x-trello-token": "tok456"}
-    result = require_headers(headers, "x-trello-key", "x-trello-token")
-    assert result == {"x-trello-key": "key123", "x-trello-token": "tok456"}
+class TestCredentialsStore:
+    def test_resolve_returns_path_when_file_exists(self, tmp_path):
+        creds_dir = tmp_path / "google-drive"
+        creds_dir.mkdir(parents=True)
+        (creds_dir / "personal.json").write_text("{}")
 
+        store = CredentialsStore(str(tmp_path))
+        result = store.resolve("google-drive", "personal")
 
-def test_header_lookup_is_case_insensitive():
-    headers = {"X-Trello-Key": "key123"}
-    result = require_headers(headers, "x-trello-key")
-    assert result["x-trello-key"] == "key123"
+        assert result == str(tmp_path / "google-drive" / "personal.json")
 
-
-def test_raises_with_all_missing_headers_named():
-    with pytest.raises(Exception) as exc_info:
-        require_headers({}, "x-trello-key", "x-trello-token")
-    assert "x-trello-key" in str(exc_info.value)
-    assert "x-trello-token" in str(exc_info.value)
+    def test_resolve_raises_mcp_error_when_file_missing(self, tmp_path):
+        store = CredentialsStore(str(tmp_path))
+        with pytest.raises(Exception) as exc_info:
+            store.resolve("google-drive", "missing-instance")
+        assert "missing-instance" in str(exc_info.value)

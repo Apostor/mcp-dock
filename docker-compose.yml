@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:2.11.31
     ports:
       - "80:80"
       - "8080:8080"
@@ -16,12 +16,13 @@ services:
 
   mcp-dock:
     build: .
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     volumes:
       - ${HOME}/.mcp-dock/tokens:/opt/app/tokens
+      - ${HOME}/.mcp-dock/credentials:/opt/app/credentials:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mcp-dock.rule=PathPrefix(`/`)"

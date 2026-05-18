@@ -1,14 +1,12 @@
 import sys
 import types
-from typing import Annotated
 
 import httpx
 import pytest
-from fastmcp import FastMCP
-from fastmcp.dependencies import CurrentHeaders
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData, INVALID_PARAMS
 from starlette.applications import Starlette
 
-from core.credentials import require_headers
 from core.factory import create_server
 
 
@@ -54,13 +52,12 @@ async def test_two_enabled_servers_both_respond(inject_stub):
 
 
 @pytest.mark.anyio
-async def test_missing_credential_headers_returns_mcp_error_not_500(inject_stub, monkeypatch):
+async def test_mcp_error_from_tool_returns_non_500(inject_stub, monkeypatch):
     server = create_server("trello")
 
     @server.tool()
-    async def get_cards(headers: Annotated[dict, CurrentHeaders()]) -> list:
-        creds = require_headers(headers, "x-trello-key", "x-trello-token")
-        return []
+    async def get_cards() -> list:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message="No credentials configured"))
 
     mod = types.ModuleType("servers.trello.server")
     mod.trello = server
@@ -71,8 +68,6 @@ async def test_missing_credential_headers_returns_mcp_error_not_500(inject_stub,
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=root), base_url="http://test"
     ) as client:
-        # MCP initialize + call_tool via streamable HTTP
-        # A missing-header McpError must produce a non-500 response
         response = await client.post(
             "/trello/mcp/",
             json={

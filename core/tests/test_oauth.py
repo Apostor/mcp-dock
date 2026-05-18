@@ -85,8 +85,8 @@ class TestTokenIsolation:
         work = OAuthBase(server="google-drive", instance="work", tokens_path=str(tokens_dir))
         personal = OAuthBase(server="google-drive", instance="personal", tokens_path=str(tokens_dir))
 
-        assert work.get_token(credentials_path="/fake/credentials.json") == "token-work"
-        assert personal.get_token(credentials_path="/fake/credentials.json") == "token-personal"
+        assert work.get_token() == "token-work"
+        assert personal.get_token() == "token-personal"
 
     def test_token_file_has_600_permissions(self, tokens_dir: Path):
         tokens_dir.mkdir()
@@ -107,7 +107,7 @@ class TestTokenIsolation:
             mock_creds.client_secret = token_data["client_secret"]
             MockCreds.return_value = mock_creds
 
-            oauth.get_token(credentials_path="/fake/credentials.json")
+            oauth.get_token()
 
         assert oct(token_file.stat().st_mode & 0o777) == oct(0o600)
 
@@ -136,7 +136,7 @@ class TestGetTokenRefresh:
             mock_creds.client_secret = token_data["client_secret"]
             MockCreds.return_value = mock_creds
 
-            result = oauth.get_token(credentials_path="/fake/credentials.json")
+            result = oauth.get_token()
 
         assert result == "new-access-token"
         mock_creds.refresh.assert_called_once()
@@ -164,7 +164,7 @@ class TestGetTokenRefresh:
             mock_creds.client_secret = token_data["client_secret"]
             MockCreds.return_value = mock_creds
 
-            oauth.get_token(credentials_path="/fake/credentials.json")
+            oauth.get_token()
 
         saved = json.loads(token_file.read_text())
         assert saved["token"] == "new-access-token"
@@ -183,7 +183,7 @@ class TestGetTokenCached:
             tokens_path=str(tokens_dir),
         )
 
-        token = oauth.get_token(credentials_path="/fake/credentials.json")
+        token = oauth.get_token()
 
         assert token == "access-token-123"
 
@@ -200,5 +200,5 @@ class TestGetTokenCached:
         )
 
         with patch("google.oauth2.credentials.Credentials.refresh") as mock_refresh:
-            oauth.get_token(credentials_path="/fake/credentials.json")
+            oauth.get_token()
             mock_refresh.assert_not_called()
