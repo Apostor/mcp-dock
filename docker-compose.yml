@@ -1,0 +1,10 @@
+services:
+  mcp-dock:
+    build: .
+    ports:
+      - "80:8000"
+    env_file:
+      - .env
+    volumes:
+      - ${HOME}/.mcp-dock/tokens:/opt/app/tokens
+    restart: unless-stopped
