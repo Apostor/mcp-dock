@@ -3,8 +3,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 
-def create_server(name: str) -> FastMCP:
-    server = FastMCP(name)
+def create_server(name: str, instructions: str | None = None) -> FastMCP:
+    server = FastMCP(name, instructions=instructions)
 
     @server.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> JSONResponse:

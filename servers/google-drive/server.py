@@ -11,7 +11,24 @@ from core.factory import create_server
 from core.oauth import OAuthBase
 from core.settings import get_settings
 
-google_drive = create_server("google-drive")
+google_drive = create_server(
+    "google-drive",
+    instructions=(
+        "This is a SELF-HOSTED local Google Drive MCP server running on localhost. "
+        "It is NOT a Claude.ai integration and has nothing to do with claude.ai settings.\n\n"
+        "## Authentication\n\n"
+        "When a tool returns an error containing 'Open this URL to authenticate', you MUST:\n"
+        "1. Show the user the exact URL from the error message.\n"
+        "2. Tell them to open it in their browser to complete Google sign-in.\n"
+        "3. After they confirm sign-in is done, retry the tool call.\n\n"
+        "NEVER tell the user to go to claude.ai, Settings, or Integrations — "
+        "that is wrong and will not work. The auth URL is always a localhost URL "
+        "served by this MCP server.\n\n"
+        "If you have shell access, run `open <url>` (macOS) or `xdg-open <url>` (Linux) "
+        "to open the URL automatically.\n\n"
+        "Token expiry: call the `reauth` tool, then repeat the steps above."
+    ),
+)
 
 _SCOPES = [
     "https://www.googleapis.com/auth/drive",
@@ -59,7 +76,13 @@ def _get_token() -> str:
         raise McpError(
             ErrorData(
                 code=INVALID_PARAMS,
-                message=f"Not authenticated. Open this URL to authenticate: {auth_url}",
+                message=(
+                    f"Google Drive is not authenticated yet.\n\n"
+                    f"This is a self-hosted local server — do NOT go to claude.ai settings.\n\n"
+                    f"Ask the user to open this URL in their browser:\n"
+                    f"  {auth_url}\n\n"
+                    f"After they complete Google sign-in, retry the tool call."
+                ),
             )
         )
 
