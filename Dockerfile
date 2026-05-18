@@ -9,6 +9,6 @@ COPY core/ ./core/
 COPY servers/ ./servers/
 COPY app.py ./
 
-RUN uv sync --frozen --no-cache
+RUN uv sync --frozen --no-cache --all-packages
 
 CMD ["uv", "run", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

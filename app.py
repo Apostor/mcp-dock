@@ -1,7 +1,9 @@
+import contextlib
 import importlib
 import importlib.util
 import sys
 import types
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -49,15 +51,25 @@ def create_app(enabled_servers: list[str] | None = None) -> Starlette:
     if enabled_servers is None:
         enabled_servers = get_settings().get_enabled_servers()
 
+    http_apps = []
     routes = []
     for name in enabled_servers:
         if name not in _SERVER_REGISTRY:
             continue
         module_key, file_rel_path, attr = _SERVER_REGISTRY[name]
         server = _load_server(module_key, file_rel_path, attr)
-        routes.append(Mount(f"/{name}", app=server.http_app()))
+        http_app = server.http_app()
+        http_apps.append(http_app)
+        routes.append(Mount(f"/{name}", app=http_app))
 
-    return Starlette(routes=routes)
+    @asynccontextmanager
+    async def lifespan(_app: Starlette):
+        async with contextlib.AsyncExitStack() as stack:
+            for ha in http_apps:
+                await stack.enter_async_context(ha.router.lifespan_context(_app))
+            yield
+
+    return Starlette(routes=routes, lifespan=lifespan)
 
 
 app = create_app()

@@ -21,8 +21,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ${HOME}/.mcp-dock/tokens:/opt/app/tokens
-      - ${HOME}/.mcp-dock/credentials:/opt/app/credentials:ro
+      - ./tokens:/opt/app/tokens
+      - ./credentials:/opt/app/credentials:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mcp-dock.rule=PathPrefix(`/`)"
