@@ -2,35 +2,41 @@
 
 Self-hosted MCP servers running on localhost. Your data never leaves your machine.
 
-Connect your AI assistant (Claude Desktop, Cursor, etc.) to Google Drive, Trello, GitHub, Slack, and more — without routing credentials through third-party servers.
+Connect Claude Desktop, Claude Code, Cursor, and other AI assistants to Google Drive, Trello, GitHub, Slack, and more — without routing credentials through third-party servers.
 
 ## How it works
 
-Credentials live on the server, not in your MCP client config. You place an OAuth client secret (or API key file) in `~/.mcp-dock/credentials/<server>/<instance>.json` once, then point your MCP client at the server URL with `?instance=<name>`.
+1. You place an OAuth client secret in `./credentials/<server>/<instance>.json` inside the project directory.
+2. Docker mounts that directory read-only into the container.
+3. Your MCP client connects with `?instance=<name>` in the URL — no secrets in the client config.
+4. On the first tool call the server returns an auth URL. Open it in your browser to complete OAuth. Tokens are stored in `./tokens/` and refreshed automatically.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/your-org/mcp-dock
+git clone https://github.com/Apostor/mcp-dock
 cd mcp-dock
-cp .env.example .env        # edit ENABLED_SERVERS
-docker compose up
+cp .env.example .env
 ```
 
-### 1. Place your credentials on the server
+Edit `.env` and set `ENABLED_SERVERS=google-drive` (comma-separated list of servers to run).
 
-Create the credentials directory and drop your OAuth client secret (downloaded from Google Cloud Console) in the right location:
-
-```
-mkdir -p ~/.mcp-dock/credentials/google-drive
-cp ~/Downloads/client_secret.json ~/.mcp-dock/credentials/google-drive/personal.json
+```bash
+docker compose up -d
 ```
 
-Each file is named after the **instance** — a label you choose to distinguish accounts (e.g. `personal`, `work`).
+### 1. Place your OAuth credentials
 
-### 2. Add to your MCP client config
+```bash
+mkdir -p credentials/google-drive
+cp ~/Downloads/client_secret_*.json credentials/google-drive/personal.json
+```
 
-**Claude Desktop** uses a stdio bridge ([`supergateway`](https://github.com/supercorp-ai/supergateway)) to connect to the HTTP server:
+The filename without `.json` is the **instance name** — use any label (`personal`, `work`, etc.). See the server's own README for how to create the OAuth client secret in Google Cloud Console.
+
+### 2. Configure your MCP client
+
+**Claude Desktop** only supports stdio transport — use the [`supergateway`](https://github.com/supercorp-ai/supergateway) bridge:
 
 ```json
 {
@@ -43,7 +49,7 @@ Each file is named after the **instance** — a label you choose to distinguish 
 }
 ```
 
-**Claude Code / Cursor / other HTTP-native clients** can use the URL directly:
+**Claude Code / Cursor / other HTTP-native clients** connect directly:
 
 ```json
 {
@@ -55,49 +61,59 @@ Each file is named after the **instance** — a label you choose to distinguish 
 }
 ```
 
-No API keys or credentials in the config — just an instance name.
+### 3. Authenticate on first use
 
-### 3. Authenticate
-
-On first use, the server returns an auth URL. Open it in your browser to complete the OAuth flow. After that, the server caches the token automatically and refreshes it when needed.
-
-## Available Servers
-
-| Server | Path | Credentials file |
-|--------|------|-----------------|
-| Google Drive | `/google-drive` | OAuth client secret JSON (from Google Cloud Console) |
-| Trello | `/trello` | *(coming soon)* |
-| GitHub | `/github` | *(coming soon)* |
-| GitLab | `/gitlab` | *(coming soon)* |
-| Slack | `/slack` | *(coming soon)* |
-| Notion | `/notion` | *(coming soon)* |
-| Linear | `/linear` | *(coming soon)* |
-| Jira | `/jira` | *(coming soon)* |
-| Telegram | `/telegram` | *(coming soon)* |
-| WhatsApp | `/whatsapp` | *(coming soon)* |
-
-## Credentials directory layout
+On the first tool call the server returns an error with an auth URL:
 
 ```
-~/.mcp-dock/
-  credentials/
+Google Drive is not authenticated yet.
+Ask the user to open this URL in their browser:
+  http://localhost/google-drive/auth/start?instance=personal
+```
+
+Open that URL in your browser → Google sign-in → Allow. After that every tool call works automatically — tokens refresh silently in the background.
+
+## Credentials and tokens directory layout
+
+Both directories live inside the project and are gitignored:
+
+```
+mcp-dock/
+  credentials/                        ← mounted read-only into container
     google-drive/
-      personal.json   ← OAuth client secret for "personal" instance
-      work.json       ← OAuth client secret for "work" instance
-  tokens/
-    google-drive-personal.json   ← cached OAuth token (managed automatically)
+      personal.json                   ← OAuth client secret ("personal" instance)
+      work.json                       ← OAuth client secret ("work" instance)
+  tokens/                             ← written by the server, never commit this
+    google-drive-personal.json        ← cached OAuth token (auto-managed)
     google-drive-work.json
 ```
 
-The `credentials/` directory is bind-mounted read-only into the container. Token files in `tokens/` are written by the server after the first OAuth flow.
+`CredentialsStore` resolves `credentials/<server>/<instance>.json` at request time. `OAuthBase` reads and writes `tokens/<server>-<instance>.json`, refreshing automatically when the token expires.
+
+## Available servers
+
+| Server | Path | Status |
+|--------|------|--------|
+| Google Drive | `/google-drive` | Available — [README](servers/google-drive/README.md) |
+| Trello | `/trello` | Coming soon |
+| GitHub | `/github` | Coming soon |
+| GitLab | `/gitlab` | Coming soon |
+| Slack | `/slack` | Coming soon |
+| Notion | `/notion` | Coming soon |
+| Linear | `/linear` | Coming soon |
+| Jira | `/jira` | Coming soon |
+| Telegram | `/telegram` | Coming soon |
+| WhatsApp | `/whatsapp` | Coming soon |
+
+Enable only the servers you need via `ENABLED_SERVERS` in `.env`.
 
 ## Multi-account support
 
-Run multiple accounts for the same service by using different instance names:
+Add one credential file per account and one MCP server entry per instance:
 
-```
-~/.mcp-dock/credentials/google-drive/personal.json
-~/.mcp-dock/credentials/google-drive/work.json
+```bash
+credentials/google-drive/personal.json
+credentials/google-drive/work.json
 ```
 
 ```json
@@ -117,7 +133,7 @@ Run multiple accounts for the same service by using different instance names:
 
 ## Remote / VPS deployment
 
-Replace `localhost` with your server's hostname:
+Replace `localhost` with your server's hostname everywhere, including the redirect URI you register in the OAuth provider's console:
 
 ```json
 {
@@ -130,14 +146,14 @@ Replace `localhost` with your server's hostname:
 }
 ```
 
-The credentials directory lives on the remote host. No local secrets required in the client config.
+Credentials live on the remote host. No local secrets needed in the client config.
 
 ## Local development
 
 ```bash
 uv sync
-cp .env.example .env
-mcp-dock run
+cp .env.example .env       # set ENABLED_SERVERS
+uv run uvicorn app:app --reload
 ```
 
 ## Contributing
