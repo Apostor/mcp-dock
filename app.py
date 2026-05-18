@@ -1,10 +1,9 @@
-import os
-
+from core.settings import get_settings
 from fastmcp import FastMCP
 
 app = FastMCP("mcp-dock")
 
-_enabled = {s.strip() for s in os.getenv("ENABLED_SERVERS", "").split(",") if s.strip()}
+_enabled = set(get_settings().enabled_servers)
 
 if "trello" in _enabled:
     from servers.trello.server import trello
