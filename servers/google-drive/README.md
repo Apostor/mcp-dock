@@ -4,40 +4,76 @@ Covers Drive, Docs, and Sheets with a single OAuth credential set per instance.
 
 ## Setup
 
-### Step 1: Place your OAuth credentials on the server
+### Step 1: Create OAuth 2.0 credentials in Google Cloud Console
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
-2. Create an **OAuth 2.0 Client ID** — choose **Web application** type
-3. Under **Authorized redirect URIs**, add: `http://<your-server-host>/google-drive/auth/callback`
-   - Local: `http://localhost/google-drive/auth/callback`
-   - Remote/VPS: `http://your-server.example.com/google-drive/auth/callback`
-4. Enable: Google Drive API, Google Docs API, Google Sheets API
-5. Download the JSON file and place it in the credentials directory:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Enabled APIs & Services**
+2. Enable all three APIs:
+   - **Google Drive API**
+   - **Google Docs API**
+   - **Google Sheets API**
+3. Go to **APIs & Services** → **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID**
+4. Choose **Web application** as the application type
+5. Under **Authorized redirect URIs**, click **Add URI** and enter the exact value for your deployment:
+
+   | Deployment | Redirect URI |
+   |------------|-------------|
+   | Local (default) | `http://localhost/google-drive/auth/callback` |
+   | Remote / VPS | `http://your-server.example.com/google-drive/auth/callback` |
+
+   > **Common mistake:** Do not add a port number (e.g. `:8000`). Traefik listens on port 80, so the URI has no port.
+
+6. Click **Create**, then **Download JSON**
+
+### Step 2: Configure OAuth consent screen (required once)
+
+1. Go to **APIs & Services** → **OAuth consent screen**
+2. Choose **External** user type → **Create**
+3. Fill in App name, user support email, developer contact email → **Save and Continue**
+4. On the **Scopes** step → **Save and Continue** (scopes are requested at runtime)
+5. On the **Test users** step, add your Google account email → **Save and Continue**
+6. Go back to the **OAuth consent screen** summary and click **Publish App** → **Confirm**
+
+   > Publishing prevents the 7-day refresh token expiry that applies to apps in **Testing** mode.
+
+### Step 3: Place your credentials file on the server
 
 ```bash
 mkdir -p ~/.mcp-dock/credentials/google-drive
-cp ~/Downloads/client_secret.json ~/.mcp-dock/credentials/google-drive/personal.json
+cp ~/Downloads/client_secret_*.json ~/.mcp-dock/credentials/google-drive/personal.json
 ```
 
-The filename (without `.json`) is the **instance name** — use any label you like (`personal`, `work`, etc.).
+The filename (without `.json`) becomes the **instance name** — use any label you like (`personal`, `work`, etc.).
 
-### Step 2: Configure your MCP client
+### Step 4: Configure your MCP client
 
-In `claude_desktop_config.json` (or any MCP client):
+**Claude Desktop** requires a stdio bridge because it only supports stdio transport:
 
 ```json
 {
   "mcpServers": {
     "personal-google-drive": {
-      "url": "http://localhost/google-drive/mcp/?instance=personal"
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
     }
   }
 }
 ```
 
-No credentials or file paths in the config — just a URL with an `?instance=` parameter.
+**Claude Code / Cursor / other HTTP-native clients:**
 
-### Step 3: Authenticate on first use
+```json
+{
+  "mcpServers": {
+    "personal-google-drive": {
+      "url": "http://localhost/google-drive/mcp?instance=personal"
+    }
+  }
+}
+```
+
+No credentials or file paths in the config — just the instance name in the URL.
+
+### Step 5: Authenticate on first use
 
 On the first tool call, the server returns an error with an auth URL:
 
@@ -46,7 +82,7 @@ Not authenticated. Open this URL to authenticate:
 http://localhost/google-drive/auth/start?instance=personal
 ```
 
-Open that URL in your browser → Google login → Allow access. You'll see a confirmation page. After that, every tool call works automatically — tokens refresh silently in the background.
+Open that URL in your browser → Google sign-in → **Allow**. You'll see a confirmation page. After that, every tool call works automatically — tokens refresh silently in the background.
 
 ## Multi-account usage
 
@@ -62,11 +98,19 @@ Add separate entries to your MCP config:
 ```json
 {
   "mcpServers": {
-    "personal-drive": { "url": "http://localhost/google-drive/mcp/?instance=personal" },
-    "work-drive":     { "url": "http://localhost/google-drive/mcp/?instance=work" }
+    "personal-drive": {
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
+    },
+    "work-drive": {
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=work"]
+    }
   }
 }
 ```
+
+Each instance needs its own OAuth client secret file and its own entry in **Authorized redirect URIs** in Google Cloud Console. You can reuse the same OAuth client for both accounts — just add both redirect URIs to the same client.
 
 ## Token lifecycle
 
@@ -77,11 +121,20 @@ Add separate entries to your MCP config:
 | Refresh token expired (6+ months inactive, or Testing mode app) | Tool returns auth URL again |
 | User calls `reauth` tool | Clears token; next call returns auth URL |
 
-**Tip:** In Google Cloud Console, publish your app (set status to **Production**). This prevents the 7-day refresh token expiry that applies to apps in Testing mode.
-
 ## Remote / VPS deployment
 
-Replace `localhost` with your server's hostname. Credentials live on the remote host — no local files needed in the MCP client config.
+Replace `localhost` with your server's hostname everywhere, including the redirect URI in Google Cloud Console:
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "supergateway", "--streamableHttp", "https://mcp.example.com/google-drive/mcp?instance=personal"]
+}
+```
+
+Redirect URI to register: `https://mcp.example.com/google-drive/auth/callback`
+
+Credentials live on the remote host — no local files needed in the client config.
 
 ## Tools
 

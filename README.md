@@ -30,20 +30,32 @@ Each file is named after the **instance** — a label you choose to distinguish 
 
 ### 2. Add to your MCP client config
 
+**Claude Desktop** uses a stdio bridge ([`supergateway`](https://github.com/supercorp-ai/supergateway)) to connect to the HTTP server:
+
 ```json
 {
   "mcpServers": {
     "personal-google-drive": {
-      "url": "http://localhost/google-drive/mcp/?instance=personal"
-    },
-    "work-google-drive": {
-      "url": "http://localhost/google-drive/mcp/?instance=work"
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
     }
   }
 }
 ```
 
-No API keys or credentials in the config — just a URL.
+**Claude Code / Cursor / other HTTP-native clients** can use the URL directly:
+
+```json
+{
+  "mcpServers": {
+    "personal-google-drive": {
+      "url": "http://localhost/google-drive/mcp?instance=personal"
+    }
+  }
+}
+```
+
+No API keys or credentials in the config — just an instance name.
 
 ### 3. Authenticate
 
@@ -91,20 +103,29 @@ Run multiple accounts for the same service by using different instance names:
 ```json
 {
   "mcpServers": {
-    "personal-drive": { "url": "http://localhost/google-drive/mcp/?instance=personal" },
-    "work-drive":     { "url": "http://localhost/google-drive/mcp/?instance=work" }
+    "personal-drive": {
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
+    },
+    "work-drive": {
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=work"]
+    }
   }
 }
 ```
 
 ## Remote / VPS deployment
 
-If mcp-dock runs on a remote server, replace `localhost` with your server's hostname or IP:
+Replace `localhost` with your server's hostname:
 
 ```json
 {
   "mcpServers": {
-    "personal-drive": { "url": "https://mcp.example.com/google-drive/mcp/?instance=personal" }
+    "personal-drive": {
+      "command": "npx",
+      "args": ["-y", "supergateway", "--streamableHttp", "https://mcp.example.com/google-drive/mcp?instance=personal"]
+    }
   }
 }
 ```
