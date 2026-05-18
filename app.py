@@ -1,47 +1,38 @@
-from fastmcp import FastMCP
+import importlib
+
+from starlette.applications import Starlette
+from starlette.routing import Mount
 
 from core.settings import get_settings
 
-app = FastMCP("mcp-dock")
+_SERVER_REGISTRY: dict[str, tuple[str, str]] = {
+    "trello":       ("servers.trello.server",        "trello"),
+    "google-drive": ("servers.google_drive.server",  "google_drive"),
+    "github":       ("servers.github.server",        "github"),
+    "gitlab":       ("servers.gitlab.server",        "gitlab"),
+    "slack":        ("servers.slack.server",         "slack"),
+    "notion":       ("servers.notion.server",        "notion"),
+    "linear":       ("servers.linear.server",        "linear"),
+    "jira":         ("servers.jira.server",          "jira"),
+    "telegram":     ("servers.telegram.server",      "telegram"),
+    "whatsapp":     ("servers.whatsapp.server",      "whatsapp"),
+}
 
-_enabled = set(get_settings().get_enabled_servers())
 
-if "trello" in _enabled:
-    from servers.trello.server import trello
-    app.mount("/trello", trello)
+def create_app(enabled_servers: list[str] | None = None) -> Starlette:
+    if enabled_servers is None:
+        enabled_servers = get_settings().get_enabled_servers()
 
-if "google-drive" in _enabled:
-    from servers.google_drive.server import google_drive
-    app.mount("/google-drive", google_drive)
+    routes = []
+    for name in enabled_servers:
+        if name not in _SERVER_REGISTRY:
+            continue
+        module_path, attr = _SERVER_REGISTRY[name]
+        module = importlib.import_module(module_path)
+        server = getattr(module, attr)
+        routes.append(Mount(f"/{name}", app=server.http_app()))
 
-if "github" in _enabled:
-    from servers.github.server import github
-    app.mount("/github", github)
+    return Starlette(routes=routes)
 
-if "gitlab" in _enabled:
-    from servers.gitlab.server import gitlab
-    app.mount("/gitlab", gitlab)
 
-if "slack" in _enabled:
-    from servers.slack.server import slack
-    app.mount("/slack", slack)
-
-if "notion" in _enabled:
-    from servers.notion.server import notion
-    app.mount("/notion", notion)
-
-if "linear" in _enabled:
-    from servers.linear.server import linear
-    app.mount("/linear", linear)
-
-if "jira" in _enabled:
-    from servers.jira.server import jira
-    app.mount("/jira", jira)
-
-if "telegram" in _enabled:
-    from servers.telegram.server import telegram
-    app.mount("/telegram", telegram)
-
-if "whatsapp" in _enabled:
-    from servers.whatsapp.server import whatsapp
-    app.mount("/whatsapp", whatsapp)
+app = create_app()

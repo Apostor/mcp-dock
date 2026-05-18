@@ -16,5 +16,5 @@ async def test_health_endpoint_returns_200():
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=server.http_app()), base_url="http://test"
     ) as client:
-        response = await client.get("/trello/health")
+        response = await client.get("/health")
     assert response.status_code == 200
