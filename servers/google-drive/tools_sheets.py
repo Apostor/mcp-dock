@@ -212,6 +212,8 @@ async def set_borders(
     token = _get_token()
     svc = _sheets_service(token)
     grid_range = _a1_to_grid_range(svc, spreadsheet_id, range_notation)
+    if not sides:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one side"))
     border = {"style": style, "color": _hex_to_color(color)}
     borders_spec: dict = {}
     for side in sides:
@@ -283,6 +285,8 @@ async def add_data_validation(
     svc = _sheets_service(token)
     grid_range = _a1_to_grid_range(svc, spreadsheet_id, range_notation)
 
+    if not values:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one validation value"))
     if validation_type == "LIST":
         condition_type = "ONE_OF_LIST"
         show_custom_ui = True

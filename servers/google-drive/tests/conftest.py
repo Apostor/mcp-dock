@@ -16,7 +16,8 @@ _servers_pkg = importlib.import_module("servers")
 # `patch("servers.google_drive.server.X")` can traverse the hierarchy.
 if _PARENT_KEY not in sys.modules:
     stub = types.ModuleType(_PARENT_KEY)
-    stub.__path__ = []
+    stub.__path__ = [str(_SERVER_PATH.parent)]
+    stub.__package__ = _PARENT_KEY
     sys.modules[_PARENT_KEY] = stub
     _servers_pkg.google_drive = stub
 
@@ -27,3 +28,4 @@ if _MODULE_KEY not in sys.modules:
     sys.modules[_MODULE_KEY] = module
     sys.modules[_PARENT_KEY].server = module
     spec.loader.exec_module(module)
+

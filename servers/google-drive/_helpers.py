@@ -64,10 +64,13 @@ def _a1_to_grid_range(svc, spreadsheet_id: str, range_notation: str) -> dict:
                     col_str += ch
                 else:
                     row_str += ch
-            return (
-                _col_letter_to_index(col_str) if col_str else 0,
-                (int(row_str) - 1) if row_str else 0,
-            )
+            try:
+                row_idx = (int(row_str) - 1) if row_str else 0
+            except ValueError:
+                raise McpError(
+                    ErrorData(code=INVALID_PARAMS, message=f"Invalid cell address: {cell!r}")
+                )
+            return (_col_letter_to_index(col_str) if col_str else 0, row_idx)
 
         sc, sr = _parse(start_cell)
         ec, er = _parse(end_cell)

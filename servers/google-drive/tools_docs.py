@@ -141,6 +141,8 @@ async def format_doc_text(
 
     if not fields:
         raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one text style argument"))
+    if not ranges:
+        return f"No matches found in {document_id}"
 
     requests = [
         {
@@ -212,6 +214,8 @@ async def format_doc_paragraph(
 
     if not fields:
         raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one paragraph format argument"))
+    if not ranges:
+        return f"No matches found in {document_id}"
 
     requests = [
         {
@@ -371,6 +375,8 @@ async def create_paragraph_bullets(
     doc = svc.documents().get(documentId=document_id).execute()
     content = doc.get("body", {}).get("content", [])
     ranges = _find_text_ranges(content, text_to_find, occurrence_index)
+    if not ranges:
+        return f"No matches found in {document_id}"
     bullet_preset = _BULLET_MAP.get(bullet_type, bullet_type)
     requests = [
         {

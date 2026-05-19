@@ -1,6 +1,3 @@
-import importlib.util as _ilu
-import sys as _sys
-from pathlib import Path as _Path
 from urllib.parse import quote
 
 from google_auth_oauthlib.flow import Flow
@@ -164,27 +161,5 @@ def _sheets_service(token: str):
     return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
 
-# ---------------------------------------------------------------------------
-# Load sibling modules — each registers its tools on google_drive as a
-# side-effect of being imported.  We use importlib by path because the
-# parent package (servers.google_drive) is a stub with an empty __path__
-# in both app.py and the test conftest, so normal subpackage imports fail.
-# ---------------------------------------------------------------------------
-
-def _load_sibling(name: str) -> None:
-    key = f"servers.google_drive.{name}"
-    if key not in _sys.modules:
-        path = _Path(__file__).parent / f"{name}.py"
-        spec = _ilu.spec_from_file_location(key, path)
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"Cannot load sibling module '{name}': file not found at {path}")
-        mod = _ilu.module_from_spec(spec)
-        _sys.modules[key] = mod
-        spec.loader.exec_module(mod)
-
-
-_load_sibling("_helpers")
-_load_sibling("tools_drive")
-_load_sibling("tools_sheets")
-_load_sibling("tools_docs")
+from . import _helpers, tools_drive, tools_sheets, tools_docs  # noqa: F401
 
