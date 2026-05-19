@@ -36,7 +36,7 @@ The filename without `.json` is the **instance name** — use any label (`person
 
 ### 2. Configure your MCP client
 
-**Claude Desktop** only supports stdio transport — use the [`supergateway`](https://github.com/supercorp-ai/supergateway) bridge:
+Use the [`supergateway`](https://github.com/supercorp-ai/supergateway) bridge:
 
 ```json
 {
@@ -44,18 +44,6 @@ The filename without `.json` is the **instance name** — use any label (`person
     "personal-google-drive": {
       "command": "npx",
       "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
-    }
-  }
-}
-```
-
-**Claude Code / Cursor / other HTTP-native clients** connect directly:
-
-```json
-{
-  "mcpServers": {
-    "personal-google-drive": {
-      "url": "http://localhost/google-drive/mcp?instance=personal"
     }
   }
 }

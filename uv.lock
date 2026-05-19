@@ -888,12 +888,16 @@ version = "0.1.0"
 source = { editable = "servers/google-drive" }
 dependencies = [
     { name = "google-api-python-client" },
+    { name = "google-auth-httplib2" },
+    { name = "google-auth-oauthlib" },
     { name = "mcp-dock-core" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0" },
+    { name = "google-auth-httplib2" },
+    { name = "google-auth-oauthlib" },
     { name = "mcp-dock-core", editable = "core" },
 ]
 

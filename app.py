@@ -37,7 +37,9 @@ def _load_server(module_key: str, file_rel_path: str, attr: str):
             for i in range(1, len(parts)):
                 parent = ".".join(parts[:i])
                 if parent not in sys.modules:
-                    sys.modules[parent] = types.ModuleType(parent)
+                    stub = types.ModuleType(parent)
+                    stub.__path__ = [str(path.parents[len(parts) - 1 - i])]
+                    sys.modules[parent] = stub
             spec = importlib.util.spec_from_file_location(module_key, path)
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_key] = module
