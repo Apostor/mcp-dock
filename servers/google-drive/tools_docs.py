@@ -139,6 +139,9 @@ async def format_doc_text(
         text_style["backgroundColor"] = {"color": {"rgbColor": _hex_to_color(background_color)}}
         fields.append("backgroundColor")
 
+    if not fields:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one text style argument"))
+
     requests = [
         {
             "updateTextStyle": {
@@ -206,6 +209,9 @@ async def format_doc_paragraph(
     if space_below is not None:
         para_style["spaceBelow"] = {"magnitude": space_below, "unit": "PT"}
         fields.append("spaceBelow")
+
+    if not fields:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one paragraph format argument"))
 
     requests = [
         {
@@ -329,12 +335,20 @@ async def edit_table_cell(
         )
     cell_content = table_cells[column].get("content", [])
     cell_start = cell_content[0]["startIndex"]
+    cell_end = cell_content[-1]["endIndex"] - 1  # preserve trailing paragraph mark
+
+    requests = []
+    if cell_end > cell_start:
+        requests.append({"deleteContentRange": {
+            "range": {"startIndex": cell_start, "endIndex": cell_end},
+        }})
+    requests.append({"insertText": {
+        "location": {"index": cell_start},
+        "text": text,
+    }})
     svc.documents().batchUpdate(
         documentId=document_id,
-        body={"requests": [{"insertText": {
-            "location": {"index": cell_start},
-            "text": text,
-        }}]},
+        body={"requests": requests},
     ).execute()
     return f"Edited table cell [{row},{column}]"
 

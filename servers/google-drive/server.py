@@ -17,7 +17,7 @@ from core.settings import get_settings
 google_drive = create_server(
     "google-drive",
     instructions=(
-        "This is a SELF-HOSTED local Google Drive MCP server running on private server"
+        "This is a SELF-HOSTED local Google Drive MCP server running on localhost.\n"
         "It is NOT a Claude.ai integration and has nothing to do with claude.ai settings.\n\n"
         "## Authentication\n\n"
         "When a tool returns an error containing 'Open this URL to authenticate', you MUST:\n"
@@ -176,6 +176,8 @@ def _load_sibling(name: str) -> None:
     if key not in _sys.modules:
         path = _Path(__file__).parent / f"{name}.py"
         spec = _ilu.spec_from_file_location(key, path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Cannot load sibling module '{name}': file not found at {path}")
         mod = _ilu.module_from_spec(spec)
         _sys.modules[key] = mod
         spec.loader.exec_module(mod)

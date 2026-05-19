@@ -7,11 +7,14 @@ def _hex_to_color(hex_color: str) -> dict:
     h = hex_color.lstrip("#")
     if len(h) != 6:
         raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Invalid hex color: {hex_color!r}"))
-    return {
-        "red": int(h[0:2], 16) / 255.0,
-        "green": int(h[2:4], 16) / 255.0,
-        "blue": int(h[4:6], 16) / 255.0,
-    }
+    try:
+        return {
+            "red": int(h[0:2], 16) / 255.0,
+            "green": int(h[2:4], 16) / 255.0,
+            "blue": int(h[4:6], 16) / 255.0,
+        }
+    except ValueError:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Invalid hex color: {hex_color!r}"))
 
 
 def _col_letter_to_index(col: str) -> int:
@@ -57,7 +60,6 @@ def _a1_to_grid_range(svc, spreadsheet_id: str, range_notation: str) -> dict:
         def _parse(cell: str) -> tuple[int, int]:
             col_str, row_str = "", ""
             for ch in cell:
-                (col_str if ch.isalpha() else row_str).__class__  # satisfy linter
                 if ch.isalpha():
                     col_str += ch
                 else:

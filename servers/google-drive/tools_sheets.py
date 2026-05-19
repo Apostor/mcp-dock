@@ -1,3 +1,6 @@
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData, INVALID_PARAMS
+
 from servers.google_drive.server import google_drive, _get_token, _sheets_service
 from servers.google_drive._helpers import _get_sheet_id, _a1_to_grid_range, _hex_to_color
 
@@ -98,6 +101,9 @@ async def format_cells(
             nf["pattern"] = number_format_pattern
         cell_format["numberFormat"] = nf
         fields_list.append("userEnteredFormat.numberFormat")
+
+    if not fields_list:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message="Provide at least one format argument"))
 
     svc.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,

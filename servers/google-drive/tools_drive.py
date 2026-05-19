@@ -25,8 +25,9 @@ async def search_files(
     """Search for files in Google Drive."""
     token = _get_token()
     svc = _drive_service(token)
+    safe_query = query.replace("'", "\\'")
     result = svc.files().list(
-        q=f"fullText contains '{query}' and trashed=false",
+        q=f"fullText contains '{safe_query}' and trashed=false",
         pageSize=page_size,
         fields="files(id,name,mimeType,modifiedTime)",
     ).execute()

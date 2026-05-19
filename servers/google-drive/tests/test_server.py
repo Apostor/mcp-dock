@@ -1138,14 +1138,14 @@ async def test_edit_table_cell(tmp_path):
                 "tableRows": [
                     {
                         "tableCells": [
-                            {"content": [{"startIndex": 5}]},
-                            {"content": [{"startIndex": 10}]},
+                            {"content": [{"startIndex": 5, "endIndex": 9}]},
+                            {"content": [{"startIndex": 10, "endIndex": 14}]},
                         ]
                     },
                     {
                         "tableCells": [
-                            {"content": [{"startIndex": 20}]},
-                            {"content": [{"startIndex": 25}]},
+                            {"content": [{"startIndex": 20, "endIndex": 29}]},
+                            {"content": [{"startIndex": 25, "endIndex": 34}]},
                         ]
                     },
                 ]
@@ -1168,10 +1168,14 @@ async def test_edit_table_cell(tmp_path):
         })
 
     assert "Edited" in str(result)
-    # Verify it inserted at the correct index (row 1, col 0 → startIndex 20)
     call_args = mock_svc.documents().batchUpdate.call_args
     body = call_args.kwargs.get("body") or (call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs["body"])
-    insert_req = body["requests"][0]["insertText"]
+    # Expect delete then insert: first request clears existing content
+    delete_req = body["requests"][0]["deleteContentRange"]
+    assert delete_req["range"]["startIndex"] == 20
+    assert delete_req["range"]["endIndex"] == 28  # endIndex(29) - 1 to preserve trailing \n
+    # Second request inserts at the now-empty cell start
+    insert_req = body["requests"][1]["insertText"]
     assert insert_req["location"]["index"] == 20
     assert insert_req["text"] == "Cell text"
 
@@ -1294,3 +1298,127 @@ async def test_trash_file(tmp_path):
 
     assert "trash" in str(result).lower()
     mock_svc.files().update.assert_called()
+
+
+# ===========================================================================
+# Copilot review fixes
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Issue 3: _hex_to_color must raise McpError for invalid hex digits
+# ---------------------------------------------------------------------------
+
+def test_hex_to_color_invalid_hex_digits():
+    from mcp.shared.exceptions import McpError
+    from servers.google_drive._helpers import _hex_to_color
+    with pytest.raises(McpError):
+        _hex_to_color("#GGGGGG")
+
+
+# ---------------------------------------------------------------------------
+# Issue 5: search_files must escape single quotes in query
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_search_files_escapes_single_quote(tmp_path):
+    _write_valid_token(tmp_path)
+    _write_credentials(tmp_path)
+    _inject_request(query_string="instance=default")
+
+    mock_svc = MagicMock()
+    mock_svc.files().list().execute.return_value = {"files": []}
+
+    with patch("servers.google_drive.tools_drive._drive_service", return_value=mock_svc), \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        await google_drive.call_tool("search_files", {"query": "it's a report"})
+
+    call_args = mock_svc.files().list.call_args
+    q = call_args.kwargs["q"]
+    assert "it\\'s" in q
+    assert "it's" not in q.replace("\\'", "")
+
+
+# ---------------------------------------------------------------------------
+# Issue 6: format_cells must raise McpError when no format args are provided
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_format_cells_no_format_args_raises(tmp_path):
+    _write_valid_token(tmp_path)
+    _write_credentials(tmp_path)
+    _inject_request(query_string="instance=default")
+
+    mock_svc = MagicMock()
+    mock_svc.spreadsheets().get().execute.return_value = {
+        "sheets": [{"properties": {"sheetId": 0, "title": "Sheet1"}}]
+    }
+
+    with patch("servers.google_drive.tools_sheets._sheets_service", return_value=mock_svc), \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        with pytest.raises(Exception) as exc_info:
+            await google_drive.call_tool("format_cells", {
+                "spreadsheet_id": "sid",
+                "range_notation": "Sheet1!A1:B2",
+            })
+
+    assert "INVALID_PARAMS" in str(exc_info.value) or "format" in str(exc_info.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Issue 7a: format_doc_text must raise McpError when no style args are given
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_format_doc_text_no_style_raises(tmp_path):
+    _write_valid_token(tmp_path)
+    _write_credentials(tmp_path)
+    _inject_request(query_string="instance=default")
+
+    mock_svc = _mock_docs_svc()
+
+    with patch("servers.google_drive.tools_docs._docs_service", return_value=mock_svc), \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        with pytest.raises(Exception) as exc_info:
+            await google_drive.call_tool("format_doc_text", {
+                "document_id": "doc-id",
+                "start_index": 1,
+                "end_index": 5,
+            })
+
+    assert "INVALID_PARAMS" in str(exc_info.value) or "style" in str(exc_info.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Issue 7b: format_doc_paragraph must raise McpError when no style args given
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_format_doc_paragraph_no_style_raises(tmp_path):
+    _write_valid_token(tmp_path)
+    _write_credentials(tmp_path)
+    _inject_request(query_string="instance=default")
+
+    mock_svc = _mock_docs_svc()
+
+    with patch("servers.google_drive.tools_docs._docs_service", return_value=mock_svc), \
+         patch("servers.google_drive.server.get_settings") as mock_settings:
+        mock_settings.return_value.tokens_path = str(tmp_path)
+        mock_settings.return_value.credentials_path = str(tmp_path)
+        from servers.google_drive.server import google_drive
+        with pytest.raises(Exception) as exc_info:
+            await google_drive.call_tool("format_doc_paragraph", {
+                "document_id": "doc-id",
+                "start_index": 1,
+                "end_index": 5,
+            })
+
+    assert "INVALID_PARAMS" in str(exc_info.value) or "format" in str(exc_info.value).lower()
