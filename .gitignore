@@ -1,4 +1,5 @@
 .env
+gateway.yaml
 __pycache__/
 *.py[cod]
 .venv/

@@ -17,9 +17,22 @@ Connect Claude Desktop, Claude Code, Cursor, and other AI assistants to Google D
 git clone https://github.com/Apostor/mcp-dock
 cd mcp-dock
 cp .env.example .env
+cp gateway.yaml.example gateway.yaml
 ```
 
-Edit `.env` and set `ENABLED_SERVERS=google-drive` (comma-separated list of servers to run).
+Edit `.env` and set `ENABLED_SERVERS=google-drive`.
+
+Generate an API key for each agent that will connect and add it to `gateway.yaml`:
+
+```bash
+python -c "import secrets; print('mcp-' + secrets.token_urlsafe(32))"
+```
+
+```yaml
+# gateway.yaml
+clients:
+  claude-desktop: mcp-<paste-your-generated-key-here>
+```
 
 ```bash
 docker compose up -d
@@ -36,14 +49,35 @@ The filename without `.json` is the **instance name** — use any label (`person
 
 ### 2. Configure your MCP client
 
-Use the [`supergateway`](https://github.com/supercorp-ai/supergateway) bridge:
+All requests must include `Authorization: Bearer <your-key>`.
+
+**`supergateway` bridge** (for stdio-based clients):
 
 ```json
 {
   "mcpServers": {
     "personal-google-drive": {
       "command": "npx",
-      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
+      "args": [
+        "-y", "supergateway",
+        "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal",
+        "--header", "Authorization: Bearer mcp-<your-key>"
+      ]
+    }
+  }
+}
+```
+
+**HTTP-native clients** (Claude Code, Cursor):
+
+```json
+{
+  "mcpServers": {
+    "personal-google-drive": {
+      "url": "http://localhost/google-drive/mcp?instance=personal",
+      "headers": {
+        "Authorization": "Bearer mcp-<your-key>"
+      }
     }
   }
 }
@@ -60,6 +94,17 @@ Ask the user to open this URL in their browser:
 ```
 
 Open that URL in your browser → Google sign-in → Allow. After that every tool call works automatically — tokens refresh silently in the background.
+
+## Gateway
+
+mcp-dock requires agents to authenticate with a bearer API key before they can call any tool.
+This prevents unauthorized local processes from accessing your data.
+
+Keys are configured in `gateway.yaml` (gitignored, created from `gateway.yaml.example`).
+The gateway also supports per-server tool governance (allowlist / blocklist) and emits a
+structured JSON audit log to stdout on every tool call.
+
+See [docs/gateway.md](docs/gateway.md) for the full reference.
 
 ## Credentials and tokens directory layout
 
@@ -83,15 +128,6 @@ mcp-dock/
 | Server | Path | Status |
 |--------|------|--------|
 | Google Drive | `/google-drive` | Available — [README](servers/google-drive/README.md) |
-| Trello | `/trello` | Coming soon |
-| GitHub | `/github` | Coming soon |
-| GitLab | `/gitlab` | Coming soon |
-| Slack | `/slack` | Coming soon |
-| Notion | `/notion` | Coming soon |
-| Linear | `/linear` | Coming soon |
-| Jira | `/jira` | Coming soon |
-| Telegram | `/telegram` | Coming soon |
-| WhatsApp | `/whatsapp` | Coming soon |
 
 Enable only the servers you need via `ENABLED_SERVERS` in `.env`.
 
@@ -109,11 +145,19 @@ credentials/google-drive/work.json
   "mcpServers": {
     "personal-drive": {
       "command": "npx",
-      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal"]
+      "args": [
+        "-y", "supergateway",
+        "--streamableHttp", "http://localhost/google-drive/mcp?instance=personal",
+        "--header", "Authorization: Bearer mcp-<your-key>"
+      ]
     },
     "work-drive": {
       "command": "npx",
-      "args": ["-y", "supergateway", "--streamableHttp", "http://localhost/google-drive/mcp?instance=work"]
+      "args": [
+        "-y", "supergateway",
+        "--streamableHttp", "http://localhost/google-drive/mcp?instance=work",
+        "--header", "Authorization: Bearer mcp-<your-key>"
+      ]
     }
   }
 }
@@ -140,9 +184,19 @@ Credentials live on the remote host. No local secrets needed in the client confi
 
 ```bash
 uv sync
-cp .env.example .env       # set ENABLED_SERVERS
+cp .env.example .env              # set ENABLED_SERVERS
+cp gateway.yaml.example gateway.yaml  # add your keys
 uv run uvicorn app:app --reload
 ```
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [Architecture](docs/architecture.md) | Request flow, layer responsibilities, module map, credential model |
+| [Gateway](docs/gateway.md) | API key setup, key generation, tool governance, audit log reference |
+| [Configuration](docs/configuration.md) | All env vars, `gateway.yaml` schema, Docker volume mounts |
+| [Servers](docs/servers.md) | Implemented servers, tool counts, auth methods |
 
 ## Contributing
 

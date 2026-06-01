@@ -8,6 +8,7 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
+from starlette.types import ASGIApp
 
 from core.settings import get_settings
 
@@ -49,7 +50,7 @@ def _load_server(module_key: str, file_rel_path: str, attr: str):
     return getattr(sys.modules[module_key], attr)
 
 
-def create_app(enabled_servers: list[str] | None = None) -> Starlette:
+def create_app(enabled_servers: list[str] | None = None) -> ASGIApp:
     if enabled_servers is None:
         enabled_servers = get_settings().get_enabled_servers()
 
@@ -71,7 +72,21 @@ def create_app(enabled_servers: list[str] | None = None) -> Starlette:
                 await stack.enter_async_context(ha.router.lifespan_context(_app))
             yield
 
-    return Starlette(routes=routes, lifespan=lifespan)
+    starlette_app = Starlette(routes=routes, lifespan=lifespan)
+
+    settings = get_settings()
+    if settings.gateway_enabled:
+        from core.gateway import GatewayConfig, AuthMiddleware
+        try:
+            config = GatewayConfig.load(settings.gateway_config_path)
+            return AuthMiddleware(starlette_app, config)
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"Gateway enabled but config not found at '{settings.gateway_config_path}'. "
+                "Create gateway.yaml from gateway.yaml.example or set GATEWAY_ENABLED=false."
+            )
+
+    return starlette_app
 
 
 app = create_app()
