@@ -23,6 +23,7 @@ services:
     volumes:
       - ./tokens:/opt/app/tokens
       - ./credentials:/opt/app/credentials:ro
+      - ./gateway.yaml:/opt/app/gateway.yaml:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mcp-dock.rule=PathPrefix(`/`)"

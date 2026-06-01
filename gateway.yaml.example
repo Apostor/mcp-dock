@@ -1,0 +1,41 @@
+# Gateway configuration — copy to gateway.yaml and fill in your API keys.
+# gateway.yaml is gitignored because it contains secrets.
+#
+# Generate a key (all options run fully local — nothing leaves your machine):
+#
+#   Python:
+#     python -c "import secrets; print('mcp-' + secrets.token_urlsafe(32))"
+#
+#   Browser DevTools (F12 → Console):
+#     'mcp-' + btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/[+/=]/g,'').slice(0,43)
+#
+#   Node.js:
+#     node -e "const c=require('crypto');console.log('mcp-'+c.randomBytes(32).toString('base64url'))"
+#
+# Key format: mcp-[A-Za-z0-9_-]  minimum 20 characters total.
+# Keys shorter or without the mcp- prefix are rejected at startup.
+
+# ── Clients ──────────────────────────────────────────────────────────────────
+# One named entry per agent. Each agent presents its key via:
+#   Authorization: Bearer mcp-...
+#
+# Revoke a client by removing its line and restarting mcp-dock.
+
+clients:
+  claude-desktop: mcp-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  cursor:         mcp-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+
+# ── Tool Governance (optional) ────────────────────────────────────────────────
+# Per-server allowlist OR blocklist. Omit a server block to allow all its tools.
+# Use allowlist OR blocklist per server — not both.
+
+servers:
+  google-drive:
+    # allowlist:            # uncomment to restrict to specific tools only
+    #   - list_files
+    #   - search
+    #   - read_file
+    blocklist:              # comment out tools you want to block
+      - delete_file
+      - remove_permission
+      - deleteItem

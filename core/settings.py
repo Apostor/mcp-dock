@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     enabled_servers: str = ""
     tokens_path: str = "/opt/app/tokens"
     credentials_path: str = "/opt/app/credentials"
+    gateway_enabled: bool = True
+    gateway_config_path: str = "gateway.yaml"
 
     def get_enabled_servers(self) -> list[str]:
         return [s.strip() for s in self.enabled_servers.split(",") if s.strip()]
