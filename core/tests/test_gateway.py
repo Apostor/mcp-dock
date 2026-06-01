@@ -195,6 +195,32 @@ async def test_valid_key_passes_through_and_sets_client(tmp_path):
     assert resp.text == "ok:claude"
 
 
+@pytest.mark.parametrize("path", [
+    "/google-drive/auth/start",
+    "/google-drive/auth/callback",
+    "/google-drive/health",
+])
+@pytest.mark.anyio
+async def test_auth_exempt_paths_bypass_api_key_check(tmp_path, path):
+    """OAuth browser redirects and health checks must work without an API key."""
+    from core.gateway import GatewayConfig, AuthMiddleware
+
+    p = tmp_path / "gw.yaml"
+    p.write_text(MINIMAL_YAML)
+    cfg = GatewayConfig.load(str(p))
+
+    async def _ok(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    app = AuthMiddleware(_ok, cfg)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.get(path)  # no Authorization header
+    assert resp.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # Cycle 5 — GatewayMiddleware: governance + audit logging
 # ---------------------------------------------------------------------------

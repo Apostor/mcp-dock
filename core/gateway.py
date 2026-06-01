@@ -86,6 +86,9 @@ async def _send_401(send: Send, message: str) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
+_AUTH_EXEMPT_SUFFIXES = ("/auth/start", "/auth/callback", "/health")
+
+
 class AuthMiddleware:
     def __init__(self, app: ASGIApp, config: GatewayConfig) -> None:
         self.app = app
@@ -93,6 +96,14 @@ class AuthMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # OAuth browser redirects and health checks bypass API key enforcement.
+        # /auth/start and /auth/callback cannot carry headers (browser navigation);
+        # they are protected by the OAuth state parameter instead.
+        path: str = scope.get("path", "")
+        if any(path.endswith(suffix) for suffix in _AUTH_EXEMPT_SUFFIXES):
             await self.app(scope, receive, send)
             return
 

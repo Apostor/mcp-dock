@@ -189,6 +189,15 @@ cp gateway.yaml.example gateway.yaml  # add your keys
 uv run uvicorn app:app --reload
 ```
 
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [Architecture](docs/architecture.md) | Request flow, layer responsibilities, module map, credential model |
+| [Gateway](docs/gateway.md) | API key setup, key generation, tool governance, audit log reference |
+| [Configuration](docs/configuration.md) | All env vars, `gateway.yaml` schema, Docker volume mounts |
+| [Servers](docs/servers.md) | Implemented servers, tool counts, auth methods |
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add a new server with `mcp-dock new <name>`.
