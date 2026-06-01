@@ -1,8 +1,5 @@
-import json
 import textwrap
 import pytest
-from unittest.mock import patch
-from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -141,10 +138,9 @@ def test_allowlist_and_blocklist_raises(config_file):
 # Cycle 4 — AuthMiddleware
 # ---------------------------------------------------------------------------
 
-import contextlib
 import httpx
 from starlette.applications import Starlette
-from starlette.routing import Route, Mount
+from starlette.routing import Route
 from starlette.responses import PlainTextResponse
 
 

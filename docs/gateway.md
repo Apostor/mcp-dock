@@ -27,7 +27,7 @@ Then configure your MCP client to send the key (see [README.md](../README.md)).
 
 ## API Key Format
 
-Keys must match: `mcp-[A-Za-z0-9_-]` with a minimum total length of 20 characters.
+Keys must match: `mcp-[A-Za-z0-9_-]{16,}` with a minimum total length of 20 characters.
 
 | Part | Example | Purpose |
 |------|---------|---------|

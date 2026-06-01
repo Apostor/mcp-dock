@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import re
 import time
 import uuid
@@ -9,7 +10,6 @@ import yaml
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
 from pydantic import AfterValidator, BaseModel, model_validator
-from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
@@ -52,7 +52,7 @@ class GatewayConfig(BaseModel):
 
     def resolve_client(self, api_key: str) -> str | None:
         for name, key in self.clients.items():
-            if key == api_key:
+            if hmac.compare_digest(key, api_key):
                 return name
         return None
 
@@ -86,7 +86,7 @@ async def _send_401(send: Send, message: str) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-_AUTH_EXEMPT_SUFFIXES = ("/auth/start", "/auth/callback", "/health")
+_AUTH_EXEMPT_RE = re.compile(r"^/[^/]+/(auth/start|auth/callback|health)$")
 
 
 class AuthMiddleware:
@@ -103,7 +103,7 @@ class AuthMiddleware:
         # /auth/start and /auth/callback cannot carry headers (browser navigation);
         # they are protected by the OAuth state parameter instead.
         path: str = scope.get("path", "")
-        if any(path.endswith(suffix) for suffix in _AUTH_EXEMPT_SUFFIXES):
+        if _AUTH_EXEMPT_RE.search(path):
             await self.app(scope, receive, send)
             return
 

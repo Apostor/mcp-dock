@@ -5,7 +5,10 @@ import sys
 from loguru import logger as _root_logger
 
 # Remove loguru's default stderr sink so only our configured sinks emit.
-_root_logger.remove()
+try:
+    _root_logger.remove(0)
+except ValueError:
+    pass  # default handler was already removed
 
 # Audit sink: serialized JSON, stdout, filtered to records bound with audit=True.
 _root_logger.add(
